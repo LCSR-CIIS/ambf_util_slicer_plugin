@@ -267,15 +267,29 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         # get the pixel data as a numpy array
         pixelDataArray = vtk.util.numpy_support.vtk_to_numpy(pixelData)
 
-        # reshape the pixel data array to a 3D array, this order maintains correct shape
+        # reshape the pixel data array to a 3D array, this order maintains correct shape, but results in (x,y,z) = (S,A,R) with origin at top left corner
+        # L/R is left, right, P/A is posterior, anterior, S/I is superior, inferior, positive is towards the name, i.e. LPS means +x, +y, +z are towards the left, posterior, superior
         pixelDataArray3D = pixelDataArray.reshape((dimensions[2], dimensions[1], dimensions[0]))
 
-        # we want the third dimension to correspond to superior axis, so we swap the first and third dimensions
-        pixelDataArray3D = np.swapaxes(pixelDataArray3D, 0, 2)
+        # now, we want to rearrange the dimensions so that we arrive at (x,y,z) = (L,P,S) as read into AMBF
+        # currently, we have (x,y,z) = (S,A,R) with the origin at the top left corner
+        # ambf will read in a volume as 2D image slices by increasing slice order. These individual images are read in (W,H) from the bottom left corner
+        # the array here however has origin at the top left corner, so (array_x, array_y, array_z) will be read in as (array_y, -array_x, array_z)
+        # where the negative sign means a flip in direction
+
+        # so if want (L,P,S) to be read, we need to input (P,-L,S) = (P,R,S)
+        pixelDataArray3D = np.swapaxes(pixelDataArray3D, 0, 2) #(S,A,R) --> (R,A,S)
+        pixelDataArray3D = np.swapaxes(pixelDataArray3D, 0, 1) #(R,A,S) --> (A,R,S)
+        pixelDataArray3D = np.flip(pixelDataArray3D, 0) #(A,R,S) --> (P,R,S)
 
         data_size = pixelDataArray3D.shape
+        # dimensions are in terms of RAS, we will be using LPS but that doesn't change the dimensions which are not signed
         dimensions_mm = np.array(dimensions)
         dimensions_m = 0.001*(dimensions_mm)
+
+        # the origin tells us what the "anatomical" position of the [0,0,0] voxel is in mm. 
+        # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
+        # [TODO: account for change in AMBF origin to bottom left corner if that occurs]
         origin_mm = scale*(origin + (dimensions_mm/2))
         origin_m = 0.001 * origin_mm
 
@@ -287,11 +301,9 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
             colorNode = labelMapNode.GetDisplayNode().GetColorNode()
 
             for i in range(pixelDataArray3D.shape[2]):
-                im_name = image_prefix + str(i) + '.png'
                 #make rbga image with size of pixelDataArray3d.shape[0] and pixelDataArray3d.shape[1]
+                im_name = image_prefix + str(i) + '.png'
                 img = np.zeros((pixelDataArray3D.shape[0], pixelDataArray3D.shape[1], 4))
-                # img = PIL.Image.new('RGBA', (pixelDataArray3D.shape[1], pixelDataArray3D.shape[0]), (0,0,0,0))
-                # to numpy array
                 # find each unique value in the slice
                 unique_values = np.unique(pixelDataArray3D[:,:,i])
                 # for each unique value, find the color and set the pixel to that color
@@ -350,8 +362,6 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
             self.save_image(data[:, :, i], im_name)
 
     def save_yaml_file(self, data_size, dimensions, volume_name, yaml_save_location, origin, scale, prefix):
-        # Note a swap in the 'x' and 'y' coordinates as a result of switch from HxW vs WxH for AMBF
-        # [TODO]: orientation as well as this axis swap is a bit unclear
         lines = []
         lines.append("# AMBF Version: (0.1)")
         lines.append("bodies: []")
@@ -365,10 +375,10 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         lines.append("VOLUME "+volume_name+":")
         lines.append("  name: "+volume_name)
         lines.append("  location:")
-        lines.append("    position: {x: " + str(origin[1])+", y: "+str(origin[0])+", z: "+str(origin[2])+"}")
-        lines.append("    orientation: {r: 0.0, p: 0.0, y: " + str(np.pi/2)+"}")
+        lines.append("    position: {x: " + str(origin[0])+", y: "+str(origin[1])+", z: "+str(origin[2])+"}")
+        lines.append("    orientation: {r: 0.0, p: 0.0, y: 0.0}")
         lines.append("  scale: "+str(scale))
-        lines.append("  dimensions: {x: "+str(dimensions[1])+", y: "+str(dimensions[0])+", z: " + str(dimensions[2]) +"}")
+        lines.append("  dimensions: {x: "+str(dimensions[0])+", y: "+str(dimensions[1])+", z: " + str(dimensions[2]) +"}")
         lines.append("  images:")
         lines.append("    path: ../resources/volumes/"+volume_name+"/")
         lines.append("    prefix: "+prefix)
