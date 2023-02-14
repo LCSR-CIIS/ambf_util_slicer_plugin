@@ -6,7 +6,7 @@ Primarily, this module is expected to be used with continuum-manipulator-volumet
 I would be remiss to not mention the work of Adnan Munawar et al., whose scripts in the referenced volumetric-drilling-plugin were used as a starting point for this module.
 
 ## Exporting Volumes (LabelMaps)
-Volumes will be exported into a folder of png files sliced in the superior/inferior plane. The orientation, etc. of the volume will be made to match the loading expectations of the AMBF Simulator. Primarily this means that the volume will be in LPS coordinates, rotated by pi/2 in the z axis, and will have its origin represented at the center of the volume, rather than the corner. NOTE: someday, AMBF may change their loading conventions, and this module will need to be updated to match.
+Volumes will be exported into a folder of png files sliced in the superior/inferior plane. The volume will be loaded in such that the LPS coordinates in the 3D image (see https://www.slicer.org/wiki/Coordinate_systems if you don't know what LPS is) correspond to the x,y,and z axes in AMBF. Currently the AMBF origin is represented at the center of the volume, rather than the corner. NOTE: someday, AMBF may change their loading conventions, and this module will need to be updated to match.
 
 You may export a volume as a "grayscale" image, or it will be exported using the current color map of the segmentation.
 
