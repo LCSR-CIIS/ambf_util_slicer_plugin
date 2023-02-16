@@ -34,6 +34,8 @@ To convert a position from RAS to LPS, you can simply negate the x and y coordin
 ## Exporting Markups
 Markups (for now markup fiducials and markup curves are supported) will be to a csv file. A reference volume must be selected, and the markups will be exported in the coordinate system of the reference volume once loaded into AMBF. They will be in LPS = (x,y,z) convention relative to the anatomical origin of the volume (i.e. if you generated the volume with the "Generate AMBF yaml" checkbox checked, then the markup points will be relative to "[volume_name]_anatomical_origin" body in the ADF file).
 
+NOTE: You must make your markups at the volume's *original* location, not on the labelmap after it was moved to an inital AMBF pose
+
 ## Example Usage of features
 - Pick a volume of your choice, and make some segmentation on it (e.g. segment out bone from a CT volume)
 - Convert the segmentation to a labelmap

@@ -572,63 +572,26 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # Get the number of control points in the markup
-        numPoints = markupNode.GetNumberOfControlPoints()
-        print("Number of control points: " + str(numPoints))
+        markup_points = slicer.util.arrayFromMarkupsControlPoints(markupNode)
 
-        slicer_dim_to_m = 1.0 / 1000.0
-        m_to_ambf_dim = ambf_scale
-
-        # get volume origin and spacing, size, spacing as numpy array
-        origin_slicer = np.array(volumeNode.GetOrigin())
-        # origin ras to lps
-        origin_slicer[0] = -origin_slicer[0]
-        origin_slicer[1] = -origin_slicer[1]
-
-        spacing_slicer = np.array(volumeNode.GetSpacing())
-        size_voxels = np.array(volumeNode.GetImageData().GetDimensions())
+        # convert to LPS by negating the x and y coordinates
+        markup_points_lps = np.copy(markup_points)
+        markup_points_lps[:,0] = -markup_points_lps[:,0]
+        markup_points_lps[:,1] = -markup_points_lps[:,1]
 
         # convert to SI units
-        origin_m = origin_slicer * slicer_dim_to_m
-        spacing_m = spacing_slicer * slicer_dim_to_m
-        size_m = size_voxels * spacing_m
-        print("Volume origin (m): " + str(origin_m))
-        print("Volume spacing (m): " + str(spacing_m))
-        print("Volume size (m): " + str(size_m))
+        markup_points_lps_m = markup_points_lps * 0.001
 
-        # ambf origin is in center of volume, not corner
-        ambf_p_slicer = origin_m + (size_m/2)
-        # ambf coordinates are rotated by pi/2 about z axis
-        ambf_R_slicer = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-        ambf_T_slicer = np.eye(4)
-        ambf_T_slicer[:3, :3] = ambf_R_slicer
-        ambf_T_slicer[:3, 3] = ambf_p_slicer
-
-        # get the markup points
-        markupPoints = []
-        for i in range(numPoints):
-            markupPoints.append(markupNode.GetNthControlPointPosition(i))
-        markupPoints = np.array(markupPoints)
-        # ras to lps
-        markupPoints[:, 0] = -markupPoints[:, 0]
-        markupPoints[:, 1] = -markupPoints[:, 1]
-
-        # convert to SI units for transformation
-        markupPoints = markupPoints * slicer_dim_to_m
-
-        # convert to ambf coordinates by multiplying each point by the transformation matrix
-        ambf_p_markup = np.dot(np.linalg.inv(ambf_T_slicer), np.hstack((markupPoints, np.ones((numPoints, 1)))).T).T
-        ambf_p_markup = ambf_p_markup[:, :3]
-
-        # convert units to ambf_dimensions
-        ambf_p_markup = ambf_p_markup * m_to_ambf_dim
+        # convert to AMBF units
+        markup_points_lps_m_ambf = markup_points_lps_m * ambf_scale
 
         # save to csv file
         # check if outputname has .csv extension, add it if not
         if not output_name.endswith(".csv"):
             output_name = output_name + ".csv"
         csv_name = os.path.join(output_dir, output_name)
-        np.savetxt(csv_name, ambf_p_markup, delimiter=",")
+        np.savetxt(csv_name, markup_points_lps_m_ambf, delimiter=",")
+        print("Saved CSV file to: " + csv_name)
 
 
 #
