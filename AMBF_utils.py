@@ -10,7 +10,6 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import os
-from Resources.slicer_helper import slicer_helper as sh
 import numpy as np
 import PIL.Image as Image
 import PIL.Image
