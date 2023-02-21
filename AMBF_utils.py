@@ -538,7 +538,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         lines.append(f"  scale: {scale}")
         lines.append(f"  dimensions: {{x: {dimensions[0]}, y: {dimensions[1]}, z: {dimensions[2]}}}")
         lines.append(f"  images:")
-        lines.append(f"    path: {yaml_save_location}/{volume_name}/")
+        lines.append(f"    path: {volume_name}/")
         lines.append(f"    prefix: {prefix}")
         lines.append(f"    format: png")
         lines.append(f"    count: {np.max(data_size)}")  # Note this can be larger than actual value
