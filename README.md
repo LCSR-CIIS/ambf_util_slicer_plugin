@@ -5,6 +5,8 @@ Primarily, this module is expected to be used with continuum-manipulator-volumet
 
 I would be remiss to not mention the work of Adnan Munawar et al., whose scripts in the referenced volumetric-drilling-plugin were used as a starting point for this module.
 
+Tested with Slicer 5.2.1
+
 ## Exporting LabelMaps (Slicer Segmentations) To AMBF Volumes:
 Volumes will be exported into a folder of png files sliced in the superior/inferior plane. Their origin will be at the center of the volume, and the orientation will be LPS corresponding to x,y,z in its local coordinate system in AMBF. 
 
