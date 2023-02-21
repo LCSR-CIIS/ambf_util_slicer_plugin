@@ -157,6 +157,35 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         volumeConversionFormLayout.addRow(self.exportLabelMapButton)
         self.exportLabelMapButton.connect('clicked(bool)', self.onExportLabelMapButton)
         
+        # Add a tab called "yaml output"
+        yamlOutputCollapsibleButton = ctk.ctkCollapsibleButton()
+        yamlOutputCollapsibleButton.text = "YAML Output"
+        self.layout.addWidget(yamlOutputCollapsibleButton)
+        yamlOutputFormLayout = qt.QFormLayout(yamlOutputCollapsibleButton)
+
+        # print the current yaml output to the screen for the user to look at and edit if they want
+        self.yamlOutput = qt.QTextEdit()
+        self.yamlOutput.setReadOnly(False)
+        yamlOutputFormLayout.addRow(self.yamlOutput)
+
+        # use qhboxlayout to put the two buttons next to each other
+        hbox = qt.QHBoxLayout()
+        yamlOutputFormLayout.addRow(hbox)
+
+        # add a button to refresh the text box with the contents of the yaml file
+        self.refreshYamlButton = qt.QPushButton("Load/Refresh YAML File")
+        self.refreshYamlButton.toolTip = "Load the yaml file into the text box."
+        self.refreshYamlButton.enabled = True
+        hbox.addWidget(self.refreshYamlButton)
+        self.refreshYamlButton.connect('clicked(bool)', self.onRefreshYamlButton)
+
+        # add a button to overwrite the yaml file with the contents of the text box
+        self.overwriteYamlButton = qt.QPushButton("Overwrite YAML File")
+        self.overwriteYamlButton.toolTip = "Overwrite the yaml file with the contents of the text box."
+        self.overwriteYamlButton.enabled = True
+        hbox.addWidget(self.overwriteYamlButton)
+        self.overwriteYamlButton.connect('clicked(bool)', self.onOverwriteYamlButton)
+
         # markup conversion tab
         markupConversionCollapsibleButton = ctk.ctkCollapsibleButton()
         markupConversionCollapsibleButton.text = "Markup Conversion"
@@ -219,6 +248,7 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         markupConversionFormLayout.addRow(self.exportMarkupButton)
         self.exportMarkupButton.connect('clicked(bool)', self.onExportMarkupButton)       
 
+
         # Add vertical spacer
         self.layout.addStretch(1)
 
@@ -229,6 +259,7 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.logic.exportLabelMapToPNG(self.segmentLabelMapSelector.currentNode(), self.outputDirSelector.currentPath, 
             self.imagePrefix.text, self.exportLabelMapAsGrayscale.checked, 
             self.generateYaml.checked, self.volumeName.text, self.ambfScale.value, self.ambfPose)
+        self.onRefreshYamlButton()
 
     def onExportMarkupButton(self):
         self.logic.exportMarkupToCSV(self.markupSelector.currentNode(), self.referenceVolumeSelector.currentNode(),
@@ -244,6 +275,11 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
     def onReferenceVolumeChanged(self):
         pass
     
+    def onOverwriteYamlButton(self):
+        with open(self.outputDirSelector.currentPath+"/"+self.volumeName.text+".yaml", "w") as f:
+            f.write(self.yamlOutput.toPlainText())
+    
+
     def onSegmentLabelMapChanged(self):
         # set anatomical_T_AMBF to the transform from the current volume origin to its center point
         volumeNode = self.segmentLabelMapSelector.currentNode()
@@ -313,7 +349,16 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.ambfPose.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
         self.anatomical_T_AMBF.SetAndObserveTransformNodeID(self.ambfPose.GetID())
 
-
+    def onRefreshYamlButton(self):
+        # outdir/volumeName.yaml
+        with open(self.outputDirSelector.currentPath+"/"+self.volumeName.text+".yaml", 'r') as stream:
+            # check if file exists
+            if stream is not None:
+                txt = stream.read()
+                self.yamlOutput.setText(txt)
+            else:
+                self.yamlOutput.setText("")
+    
 #
 # AMBF_utilsLogic
 #
@@ -587,7 +632,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         csv_name = os.path.join(output_dir, output_name)
         np.savetxt(csv_name, markup_points_lps_m_ambf, delimiter=",")
         print("Saved CSV file to: " + csv_name)
-
+    
 
 #
 # AMBF_utilsTest
