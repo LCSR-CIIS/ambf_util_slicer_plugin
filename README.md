@@ -21,6 +21,8 @@ You can generate the accompanying AMBF ADF yaml file by checking the "Generate A
 
 In addition to the volume, it will also contain a body with [volume_name]_anatomical_origin which will be located at the anatomical or "space" origin of the volume. This is the origin applied to the image by the imager. Usually it is located somewhere outside the image itself. For example, in 3D Slicer your markup coordinates are defined relative to this anatomical origin. The only difference is that the anatomical origin will be defined using the LPS = (x,y,z) convention in AMBF, whereas it is RAS = (x,y,z) in 3D slicer.
 
+You can see this file within the Slicer plugin using the "YAML Output" Tab. If you press "Load/Refresh YAML File", it will update that text from the file into the text box in the plugin. Then, if you want you can make any hard-coded edits and save that out to the file using the "Overwrite YAML file". Note: By design, if you "Export LabelMap to PNGs for AMBF", the yaml file will be overridden to the default values given your data, so do any overwriting last if need be. This editing can also be done in your favorite text editor, this just allows you to do it in the same window.
+
 ### Applying a non-identity offset to the volume
 When you select a LabelMap, a transform called "AMBF_Pose" will be generated in the "Transforms" module. You can move this around, and it will be updated in the ADF file. This is how you can specify your volume to have a non-identity pose. Both the volume's position and the anatomical origin's position will be updated in the ADF file accordingly. 
 
