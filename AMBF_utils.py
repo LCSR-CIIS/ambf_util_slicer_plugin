@@ -143,6 +143,22 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.poseText.wordWrap = True
         volumeConversionFormLayout.addRow(self.poseText)
 
+        # add a checkbox to enable/disable labelmap volume rendering
+        self.enableLabelMapVolumeRendering = qt.QCheckBox()
+        self.enableLabelMapVolumeRendering.checked = True
+        self.enableLabelMapVolumeRendering.setToolTip("Enable volume rendering of the labelmap")
+        volumeConversionFormLayout.addRow("Enable LabelMap Volume Rendering: ", self.enableLabelMapVolumeRendering)
+        # connect the checkbox to the function that enables/disables volume rendering
+        self.enableLabelMapVolumeRendering.connect('stateChanged(int)', self.onEnableLabelMapVolumeRenderingChanged)
+
+        # add a checkbox to enable/disable labelmap rendering at AMBFPose
+        self.enableLabelMapRenderingAtAmbfPose = qt.QCheckBox()
+        self.enableLabelMapRenderingAtAmbfPose.checked = True
+        self.enableLabelMapRenderingAtAmbfPose.setToolTip("Enable rendering of the labelmap at the AMBF pose")
+        volumeConversionFormLayout.addRow("Show LabelMap Rendering at AMBF Pose: ", self.enableLabelMapRenderingAtAmbfPose)
+        # connect the checkbox to the function that enables/disables rendering at AMBFPose
+        self.enableLabelMapRenderingAtAmbfPose.connect('stateChanged(int)', self.onEnableLabelMapRenderingAtAmbfPoseChanged)
+
         # volumeName is disabled if the checkbox is not checked
         self.volumeName.enabled = self.generateYaml.checked
         self.ambfScale.enabled = self.generateYaml.checked
@@ -162,6 +178,8 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         yamlOutputCollapsibleButton.text = "YAML Output"
         self.layout.addWidget(yamlOutputCollapsibleButton)
         yamlOutputFormLayout = qt.QFormLayout(yamlOutputCollapsibleButton)
+        # start collapsed
+        yamlOutputCollapsibleButton.collapsed = True
 
         # print the current yaml output to the screen for the user to look at and edit if they want
         self.yamlOutput = qt.QTextEdit()
@@ -233,6 +251,15 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.ambfPose.SetName("AMBF_Pose")
         slicer.mrmlScene.AddNode(self.ambfPose)
 
+        # create two transform nodes called RASTOLPS1 and RASTOLPS2 that have rotation matrices diag[-1,-1,1]
+        self.RASTOLPS = slicer.vtkMRMLLinearTransformNode()
+        self.RASTOLPS.SetName("RASToLPS")
+        slicer.mrmlScene.AddNode(self.RASTOLPS)
+        ras2lps = np.eye(4)
+        ras2lps[0,0] = -1
+        ras2lps[1,1] = -1
+        slicer.util.updateTransformMatrixFromArray(self.RASTOLPS, ras2lps)
+
         # output name selector
         self.outputName = qt.QLineEdit()
         self.outputName.text = "markup.csv"
@@ -286,6 +313,10 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         if volumeNode is None:
             return
 
+        # get volume rendering node
+        volRenLogic = slicer.modules.volumerendering.logic()
+        self.volren_displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+
         # Here, I will use the notation A_T_B, A_R_B, A_p_B, etc. This is a shorthand for transform, rotation, and position that take
         # points in frame B and express them in frame A. This is convenient because A_T_C = A_T_B * B_T_C in this notation.
         AMBFOriginInSlicer_p_spaceOriginInSlicer = self.logic.calculate_AMBFOriginInSlicer_p_spaceOriginInSlicer(volumeNode)
@@ -296,6 +327,7 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
 
         self.update_AMBF_axes(AMBFOriginInSlicer_p_spaceOriginInSlicer)
         self.updateTransformRelations()
+        self.onEnableLabelMapVolumeRenderingChanged()
 
     def onShowAmbfOriginChanged(self):
         self.AMBF_X.GetDisplayNode().SetVisibility(self.showAmbfOrigin.checked)
@@ -329,25 +361,25 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.AMBF_Z.SetSelectable(0)
         self.AMBF_Z.SetLocked(1)
         self.AMBF_Z.GetDisplayNode().SetVisibility(self.showAmbfOrigin.checked)
+    
 
-    def updateTransformRelations(self):
+
+    def updateTransformRelations(self):        
         # volume and labelmap nodes should be relative to anatomical_T_ambf
         # anatomical_T_ambf should be relative to ambf_pose
         # ambf_pose should be relative to AMBF_T_anatomical
-
-        # get the current nodes
-        volumeNode = self.referenceVolumeSelector.currentNode()
-        labelMapNode = self.segmentLabelMapSelector.currentNode()
-
-        # if the volume node is not None, set its transform to anatomical_T_AMBF
-        if volumeNode is not None:
-            volumeNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
-        # if the labelmap node is not None, set its transform to anatomical_T_AMBF
-        if labelMapNode is not None:
-            labelMapNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
-        # if the ambf pose node is not None, set its transform to AMBF_T_anatomical
-        self.ambfPose.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
+        
+        self.ambfPose.SetAndObserveTransformNodeID(self.RASTOLPS.GetID())
         self.anatomical_T_AMBF.SetAndObserveTransformNodeID(self.ambfPose.GetID())
+        self.RASTOLPS.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
+
+        labelMapNode = self.segmentLabelMapSelector.currentNode()
+        if labelMapNode is not None:
+            if self.enableLabelMapRenderingAtAmbfPose.checked:
+                labelMapNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
+            else:
+                labelMapNode.SetAndObserveTransformNodeID(None)
+
 
     def onRefreshYamlButton(self):
         # outdir/volumeName.yaml
@@ -358,7 +390,16 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
                 self.yamlOutput.setText(txt)
             else:
                 self.yamlOutput.setText("")
+
+    def onEnableLabelMapVolumeRenderingChanged(self):
+        if self.enableLabelMapVolumeRendering.checked:
+            self.volren_displayNode.SetVisibility(1)
+        else:
+            self.volren_displayNode.SetVisibility(0)
     
+    def onEnableLabelMapRenderingAtAmbfPoseChanged(self):
+        self.updateTransformRelations()
+
 #
 # AMBF_utilsLogic
 #
