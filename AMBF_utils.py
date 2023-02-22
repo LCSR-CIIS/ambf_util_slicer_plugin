@@ -125,6 +125,13 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.generateYaml.setToolTip("Generate a yaml file for AMBF")
         volumeConversionFormLayout.addRow("Generate AMBF yaml: ", self.generateYaml)
 
+        # checkbox (default checked) for generating image slices
+        self.generateImageSlices = qt.QCheckBox()
+        self.generateImageSlices.checked = True
+        self.generateImageSlices.setToolTip("Generate image slices")
+        volumeConversionFormLayout.addRow("Generate Image Slices: ", self.generateImageSlices)
+
+
         # text field for the name of the volume to be used in the yaml file
         self.volumeName = qt.QLineEdit()
         self.volumeName.text = "volume"
@@ -143,13 +150,28 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.poseText.wordWrap = True
         volumeConversionFormLayout.addRow(self.poseText)
 
+        # add a checkbox to enable/disable labelmap volume rendering
+        self.enableLabelMapVolumeRendering = qt.QCheckBox()
+        self.enableLabelMapVolumeRendering.checked = True
+        self.enableLabelMapVolumeRendering.setToolTip("Enable volume rendering of the labelmap")
+        volumeConversionFormLayout.addRow("Enable LabelMap Volume Rendering: ", self.enableLabelMapVolumeRendering)
+        # connect the checkbox to the function that enables/disables volume rendering
+        self.enableLabelMapVolumeRendering.connect('stateChanged(int)', self.onEnableLabelMapVolumeRenderingChanged)
+
+        # add a checkbox to enable/disable labelmap rendering at AMBFPose
+        self.enableLabelMapRenderingAtAmbfPose = qt.QCheckBox()
+        self.enableLabelMapRenderingAtAmbfPose.checked = True
+        self.enableLabelMapRenderingAtAmbfPose.setToolTip("Enable rendering of the labelmap at the AMBF pose")
+        volumeConversionFormLayout.addRow("Show LabelMap Rendering at AMBF Pose: ", self.enableLabelMapRenderingAtAmbfPose)
+        # connect the checkbox to the function that enables/disables rendering at AMBFPose
+        self.enableLabelMapRenderingAtAmbfPose.connect('stateChanged(int)', self.onEnableLabelMapRenderingAtAmbfPoseChanged)
+
         # volumeName is disabled if the checkbox is not checked
         self.volumeName.enabled = self.generateYaml.checked
         self.ambfScale.enabled = self.generateYaml.checked
         # connect the checkbox to the volumeName to enable/disable it
         self.generateYaml.connect('stateChanged(int)', self.onGenerateYamlCheckbox)
-        # disable the volumeName if the checkbox is not checked
-
+        
         # Create a button to export the LabelMap Node to png slices
         self.exportLabelMapButton = qt.QPushButton("Export LabelMap to PNGs for AMBF")
         self.exportLabelMapButton.toolTip = "Export the labelmap to png slices."
@@ -162,6 +184,8 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         yamlOutputCollapsibleButton.text = "YAML Output"
         self.layout.addWidget(yamlOutputCollapsibleButton)
         yamlOutputFormLayout = qt.QFormLayout(yamlOutputCollapsibleButton)
+        # start collapsed
+        yamlOutputCollapsibleButton.collapsed = True
 
         # print the current yaml output to the screen for the user to look at and edit if they want
         self.yamlOutput = qt.QTextEdit()
@@ -233,6 +257,19 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.ambfPose.SetName("AMBF_Pose")
         slicer.mrmlScene.AddNode(self.ambfPose)
 
+        # create two transform nodes called RASTOLPS1 and RASTOLPS2 that have rotation matrices diag[-1,-1,1]
+        self.RASTOLPS = slicer.vtkMRMLLinearTransformNode()
+        self.RASTOLPS.SetName("RASToLPS")
+        slicer.mrmlScene.AddNode(self.RASTOLPS)
+        self.RASTOLPS2 = slicer.vtkMRMLLinearTransformNode()
+        self.RASTOLPS2.SetName("RASToLPS2")
+        slicer.mrmlScene.AddNode(self.RASTOLPS2)
+        ras2lps = np.eye(4)
+        ras2lps[0,0] = -1
+        ras2lps[1,1] = -1
+        slicer.util.updateTransformMatrixFromArray(self.RASTOLPS, ras2lps)
+        slicer.util.updateTransformMatrixFromArray(self.RASTOLPS2, ras2lps)
+
         # output name selector
         self.outputName = qt.QLineEdit()
         self.outputName.text = "markup.csv"
@@ -258,7 +295,7 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
     def onExportLabelMapButton(self):
         self.logic.exportLabelMapToPNG(self.segmentLabelMapSelector.currentNode(), self.outputDirSelector.currentPath, 
             self.imagePrefix.text, self.exportLabelMapAsGrayscale.checked, 
-            self.generateYaml.checked, self.volumeName.text, self.ambfScale.value, self.ambfPose)
+            self.generateYaml.checked, self.volumeName.text, self.ambfScale.value, self.ambfPose, self.generateImageSlices.checked)
         self.onRefreshYamlButton()
 
     def onExportMarkupButton(self):
@@ -267,8 +304,8 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
 
     def onGenerateYamlCheckbox(self):
         self.volumeName.enabled = self.generateYaml.checked
-        self.ambfScale.enabled = self.generateYaml.checked
-    
+        self.ambfScale.enabled = self.generateYaml.checked        
+
     def onMarkupNodeChanged(self):
         self.outputName.text = self.markupSelector.currentNode().GetName()+".csv"
 
@@ -286,6 +323,10 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         if volumeNode is None:
             return
 
+        # get volume rendering node
+        volRenLogic = slicer.modules.volumerendering.logic()
+        self.volren_displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+
         # Here, I will use the notation A_T_B, A_R_B, A_p_B, etc. This is a shorthand for transform, rotation, and position that take
         # points in frame B and express them in frame A. This is convenient because A_T_C = A_T_B * B_T_C in this notation.
         AMBFOriginInSlicer_p_spaceOriginInSlicer = self.logic.calculate_AMBFOriginInSlicer_p_spaceOriginInSlicer(volumeNode)
@@ -296,6 +337,7 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
 
         self.update_AMBF_axes(AMBFOriginInSlicer_p_spaceOriginInSlicer)
         self.updateTransformRelations()
+        self.onEnableLabelMapVolumeRenderingChanged()
 
     def onShowAmbfOriginChanged(self):
         self.AMBF_X.GetDisplayNode().SetVisibility(self.showAmbfOrigin.checked)
@@ -329,28 +371,27 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.AMBF_Z.SetSelectable(0)
         self.AMBF_Z.SetLocked(1)
         self.AMBF_Z.GetDisplayNode().SetVisibility(self.showAmbfOrigin.checked)
+    
 
-    def updateTransformRelations(self):
-        # volume and labelmap nodes should be relative to anatomical_T_ambf
-        # anatomical_T_ambf should be relative to ambf_pose
-        # ambf_pose should be relative to AMBF_T_anatomical
 
-        # get the current nodes
-        volumeNode = self.referenceVolumeSelector.currentNode()
+    def updateTransformRelations(self):        
+        # These intermediate transforms are necessary because we want AMBF_Pose to act
+        # as if it were occuring on the center of the volume in LPS coordinates. By default,
+        # it would be on the world origin in RAS coordinates.
+        self.RASTOLPS.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
+        self.ambfPose.SetAndObserveTransformNodeID(self.RASTOLPS.GetID())
+        self.RASTOLPS2.SetAndObserveTransformNodeID(self.ambfPose.GetID())
+        self.anatomical_T_AMBF.SetAndObserveTransformNodeID(self.RASTOLPS2.GetID())
+
         labelMapNode = self.segmentLabelMapSelector.currentNode()
-
-        # if the volume node is not None, set its transform to anatomical_T_AMBF
-        if volumeNode is not None:
-            volumeNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
-        # if the labelmap node is not None, set its transform to anatomical_T_AMBF
         if labelMapNode is not None:
-            labelMapNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
-        # if the ambf pose node is not None, set its transform to AMBF_T_anatomical
-        self.ambfPose.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
-        self.anatomical_T_AMBF.SetAndObserveTransformNodeID(self.ambfPose.GetID())
+            if self.enableLabelMapRenderingAtAmbfPose.checked:
+                labelMapNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
+            else:
+                labelMapNode.SetAndObserveTransformNodeID(None)
+
 
     def onRefreshYamlButton(self):
-        # outdir/volumeName.yaml
         with open(self.outputDirSelector.currentPath+"/"+self.volumeName.text+".yaml", 'r') as stream:
             # check if file exists
             if stream is not None:
@@ -358,7 +399,16 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
                 self.yamlOutput.setText(txt)
             else:
                 self.yamlOutput.setText("")
+
+    def onEnableLabelMapVolumeRenderingChanged(self):
+        if self.enableLabelMapVolumeRendering.checked:
+            self.volren_displayNode.SetVisibility(1)
+        else:
+            self.volren_displayNode.SetVisibility(0)
     
+    def onEnableLabelMapRenderingAtAmbfPoseChanged(self):
+        self.updateTransformRelations()
+
 #
 # AMBF_utilsLogic
 #
@@ -390,7 +440,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         return volumeCenter_p_spaceOrigin
 
 
-    def exportLabelMapToPNG(self, labelMapNode, outputDir, image_prefix, grayscale, generateYaml, volume_name, scale, ambf_pose_node):
+    def exportLabelMapToPNG(self, labelMapNode, outputDir, image_prefix, grayscale, generateYaml, volume_name, scale, ambf_pose_node, generate_images):
         if labelMapNode is None:
             logging.error("Segmentation node is None")
             return
@@ -403,17 +453,9 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         labelMap = labelMapNode.GetImageData()
 
         yaml_save_location = outputDir
-
-        # we will fill a directory with png slices
-        slice_dir = os.path.join(outputDir, volume_name)
-        if not os.path.exists(slice_dir):
-            os.mkdir(slice_dir)
         
         # get the dimensions of the labelmap
         dimensions = labelMap.GetDimensions()
-
-        # get the spacing of the labelmap
-        spacing = labelMap.GetSpacing()
 
         # get the origin of the labelmap
         origin = labelMap.GetOrigin()
@@ -457,7 +499,6 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         # the origin tells us what the "anatomical" position of the [0,0,0] voxel is in mm. 
         # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
-        # [TODO: account for change in AMBF origin to bottom left corner if that occurs]
         
         # THIS IS VOLUME ORIGIN
         origin_mm = (origin - (dimensions_mm/2))
@@ -468,30 +509,37 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         print("AMBFOriginInSlicer_p_spaceOriginInSlicer: " + str(AMBFOriginInSlicer_p_spaceOriginInSlicer))
         anatomical_origin_m = -AMBFOriginInSlicer_p_spaceOriginInSlicer * 0.001
     
-        if grayscale:
-            normalized_data = self.normalize_data(pixelDataArray3D)
-            scaled_data = self.scale_data(normalized_data, 255.9)
-            self.save_volume_as_images(scaled_data, os.path.join(slice_dir, image_prefix))
-        else: # return color image using the active color node / color table
-            colorNode = labelMapNode.GetDisplayNode().GetColorNode()
+        if generate_images:
 
-            for i in range(pixelDataArray3D.shape[2]):
-                #make rbga image with size of pixelDataArray3d.shape[0] and pixelDataArray3d.shape[1]
-                im_name = image_prefix + str(i) + '.png'
-                img = np.zeros((pixelDataArray3D.shape[0], pixelDataArray3D.shape[1], 4))
-                # find each unique value in the slice
-                unique_values = np.unique(pixelDataArray3D[:,:,i])
-                # for each unique value, find the color and set the pixel to that color
-                for j in unique_values:
-                    color = np.array([0.0,0.0,0.0,0.0])
-                    colorNode.GetColor(j, color)
-                    color = (int(color[0]*255), int(color[1]*255), int(color[2]*255), int(color[3]*255))
-                    # set the pixel to the color if the scalar value is j
-                    img[pixelDataArray3D[:,:,i] == j] = color
-                # convert to PIL RBGA image
-                img = PIL.Image.fromarray(np.uint8(img))
+            # we will fill a directory with png slices
+            slice_dir = os.path.join(outputDir, volume_name)
+            if not os.path.exists(slice_dir):
+                os.mkdir(slice_dir)
 
-                img.save(os.path.join(slice_dir, im_name))
+            if grayscale:
+                normalized_data = self.normalize_data(pixelDataArray3D)
+                scaled_data = self.scale_data(normalized_data, 255.9)
+                self.save_volume_as_images(scaled_data, os.path.join(slice_dir, image_prefix))
+            else: # return color image using the active color node / color table
+                colorNode = labelMapNode.GetDisplayNode().GetColorNode()
+
+                for i in range(pixelDataArray3D.shape[2]):
+                    #make rbga image with size of pixelDataArray3d.shape[0] and pixelDataArray3d.shape[1]
+                    im_name = image_prefix + str(i) + '.png'
+                    img = np.zeros((pixelDataArray3D.shape[0], pixelDataArray3D.shape[1], 4))
+                    # find each unique value in the slice
+                    unique_values = np.unique(pixelDataArray3D[:,:,i])
+                    # for each unique value, find the color and set the pixel to that color
+                    for j in unique_values:
+                        color = np.array([0.0,0.0,0.0,0.0])
+                        colorNode.GetColor(j, color)
+                        color = (int(color[0]*255), int(color[1]*255), int(color[2]*255), int(color[3]*255))
+                        # set the pixel to the color if the scalar value is j
+                        img[pixelDataArray3D[:,:,i] == j] = color
+                    # convert to PIL RBGA image
+                    img = PIL.Image.fromarray(np.uint8(img))
+
+                    img.save(os.path.join(slice_dir, im_name))
 
         if generateYaml:
             print("data_size: " + str(data_size))
@@ -543,14 +591,16 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         # convert to m
         ambf_pose_m = ambf_pose
         ambf_pose_m[0:3,3] = ambf_pose_m[0:3,3] * 0.001
-        # convert to lps convention
-        ras2lps = np.diag([-1, -1, 1, 1])
-        ambf_pose_m_lps = ras2lps @ ambf_pose_m @ ras2lps
+        # due to the use of ras2lps in the module, we are already in the lps convention
+        ambf_pose_m_lps = ambf_pose_m
         # convert to m, then scale
 
         # we want to offset the volume origin by this amount and also adjust the anatomical_origin body respectively
         # internally AMBF uses a R,P,Y convention which equates to an Euler angle Z,Y,X where R is x P is y, Y is z
         #determine offset using homogeneous transformation ambf_pose @ [I origin; 0 0 0 1]
+        ras2lps = np.eye(4)
+        ras2lps[0,0] = -1
+        ras2lps[1,1] = -1
         old_origin_m = np.eye(4)
         old_origin_m[0:3,3] = origin_m
         # convert to lps convention
