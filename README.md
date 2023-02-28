@@ -14,7 +14,7 @@ To assist with understanding coordinate systems in 3DSlicer, see the following l
 
 You may export a volume as a "grayscale" image, or it will be exported using the current color map of the segmentation.
 
-Using Slicer's terminology, an AMBF "volume" really is generally a segmentation made from a volume. For the purposes of this plugin, you must must use a labelmap (which you can create by segmenting a volume in 3D Slicer).
+Using Slicer's terminology, an AMBF "volume" really is generally a segmentation made from a volume. For the purposes of this plugin, you must must use a labelmap (which you can create by segmenting a volume in 3D Slicer). From that segmentation, you can right click on the node and "convert segmentation to labelmap"
 
 ### Automatically Generate ADF files for AMBF Simulator
 You can generate the accompanying AMBF ADF yaml file by checking the "Generate AMBF yaml" checkbox. This will generate a yaml file with the same name as the volume in the output directory which will have the size information, etc. setup so that the AMBF Simulator can read the volume.
