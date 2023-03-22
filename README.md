@@ -7,6 +7,10 @@ I would be remiss to not mention the work of Adnan Munawar et al., whose scripts
 
 Tested with Slicer 5.2.1. Binary install is fine, no need for compilation from source.
 
+Video Demonstrating Use:
+https://user-images.githubusercontent.com/17507145/226940289-da422ef1-dd00-476c-a6f7-c10599b9dded.mp4
+
+
 ## Exporting LabelMaps (Slicer Segmentations) To AMBF Volumes:
 Volumes will be exported into a folder of png files sliced in the superior/inferior plane. Their origin (when loaded into AMBF) will be at the center of the volume, and the orientation will be LPS corresponding to x,y,z in its local coordinate system in AMBF. 
 
