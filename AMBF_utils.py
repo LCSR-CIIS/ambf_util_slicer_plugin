@@ -454,8 +454,15 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         yaml_save_location = outputDir
         
-        # get the dimensions of the labelmap
+        # get the dimensions of the labelmap (these are voxel dimensions)
         dimensions = labelMap.GetDimensions()
+
+        # get the spacing of the labelmap (these are mm per voxel in each dimension)
+        spacing = labelMap.GetSpacing()
+
+        # calculate the size of the labelmap (physical length of each dimension)
+        size_mm = [dimensions[0] * spacing[0], dimensions[1] * spacing[1], dimensions[2] * spacing[2]]
+        size_m = [size_mm[0] / 1000.0, size_mm[1] / 1000.0, size_mm[2] / 1000.0]
 
         # get the origin of the labelmap
         origin = labelMap.GetOrigin()
@@ -493,15 +500,16 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         pixelDataArray3D = np.flip(pixelDataArray3D, 0) #(A,R,S) --> (P,R,S)
 
         data_size = pixelDataArray3D.shape
-        # dimensions are in terms of RAS, we will be using LPS but that doesn't change the dimensions which are not signed
-        dimensions_mm = np.array(dimensions)
-        dimensions_m = 0.001*(dimensions_mm)
+        # sanity check, data_size should match the dimensions of the labelmap now, lets check
+        if data_size[0] != dimensions[0] or data_size[1] != dimensions[1] or data_size[2] != dimensions[2]:
+            logging.error("Data size does not match dimensions")
+            return
 
         # the origin tells us what the "anatomical" position of the [0,0,0] voxel is in mm. 
         # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
         
         # THIS IS VOLUME ORIGIN
-        origin_mm = (origin - (dimensions_mm/2))
+        origin_mm = (origin - (size_mm/2))
         origin_m = 0.001 * origin_mm
 
         # THIS IS ANATOMICAL ORIGIN
@@ -543,7 +551,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         if generateYaml:
             print("data_size: " + str(data_size))
-            self.save_yaml_file(data_size, dimensions_m, volume_name, yaml_save_location, anatomical_origin_m, scale, image_prefix, ambf_pose_node)
+            self.save_yaml_file(data_size, size_m, volume_name, yaml_save_location, anatomical_origin_m, scale, image_prefix, ambf_pose_node)
 
 
     def convert_png_transparent(self, image, bg_color=(255,255,255)):
