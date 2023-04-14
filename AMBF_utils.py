@@ -455,17 +455,19 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         yaml_save_location = outputDir
         
         # get the dimensions of the labelmap (these are voxel dimensions)
-        dimensions = labelMap.GetDimensions()
+        dimensions = np.array(labelMap.GetDimensions())
 
         # get the spacing of the labelmap (these are mm per voxel in each dimension)
-        spacing = labelMap.GetSpacing()
+        spacing = np.array(labelMapNode.GetSpacing())
 
         # calculate the size of the labelmap (physical length of each dimension)
-        size_mm = [dimensions[0] * spacing[0], dimensions[1] * spacing[1], dimensions[2] * spacing[2]]
-        size_m = [size_mm[0] / 1000.0, size_mm[1] / 1000.0, size_mm[2] / 1000.0]
+        print("Dimensions: " + str(dimensions))
+        print("Spacing: " + str(spacing))
+        size_mm = dimensions * spacing
+        size_m = size_mm / 1000.0
 
         # get the origin of the labelmap
-        origin = labelMap.GetOrigin()
+        origin = np.array(labelMapNode.GetOrigin())
         
         # get the number of components in the labelmap
         numberOfComponents = labelMap.GetNumberOfScalarComponents()
@@ -501,7 +503,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         data_size = pixelDataArray3D.shape
         # sanity check, data_size should match the dimensions of the labelmap now, lets check
-        if data_size[0] != dimensions[0] or data_size[1] != dimensions[1] or data_size[2] != dimensions[2]:
+        if not np.array_equal(data_size, dimensions):
             logging.error("Data size does not match dimensions")
             return
 
@@ -509,6 +511,8 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
         
         # THIS IS VOLUME ORIGIN
+        print("origin: " + str(origin))
+        print("size_mm: " + str(size_mm))
         origin_mm = (origin - (size_mm/2))
         origin_m = 0.001 * origin_mm
 
@@ -592,7 +596,17 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
             im_name = im_prefix + str(i) + '.png'
             self.save_image(data[:, :, i], im_name)
 
+    
     def save_yaml_file(self, data_size, dimensions, volume_name, yaml_save_location, origin_m, scale, prefix, ambf_pose_node):
+        # data_size: the size of the volume in voxels: (x,y,z) corresponds to anatomical dimensions (l,p,s)
+        # dimensions: the size of the volume in meters per dimension (x,y,z)
+        # volume_name: the name of the volume
+        # yaml_save_location: the location to save the yaml file
+        # origin_m: the anatomical origin of the volume in m
+        # scale: the scale of the volume (if applicable) for AMBF
+        # prefix: the prefix of the image files
+        # ambf_pose_node: a node that defines the initial pose of the volume in AMBF
+
         data_size = np.array(data_size)
         # unpack ambf pose to numpy array
         ambf_pose = slicer.util.arrayFromTransformMatrix(ambf_pose_node)
@@ -623,6 +637,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         origin_pos_x, origin_pos_y, origin_pos_z = new_origin_m_lps[0:3,3] * scale
         origin_rot_r, origin_rot_p, origin_rot_y = Rotation.from_matrix(new_origin_m_lps[:3, :3]).as_euler("xyz")
 
+        # doing this manually here as it is short and the yaml module is not supported/installed by default in slicer's python
         lines = []
         lines.append(f"# AMBF Version: (0.1)")
         lines.append(f"bodies:")
@@ -644,7 +659,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         lines.append(f"    path: {volume_name}/")
         lines.append(f"    prefix: {prefix}")
         lines.append(f"    format: png")
-        lines.append(f"    count: {np.max(data_size)}")  # Note this can be larger than actual value
+        lines.append(f"    count: {data_size[2]}")  # Number of images / slices
         lines.append(f"BODY {volume_name}_anatomical_origin: # This is a dummy body that can be used to represent the anatomical origin for easy reference") 
         lines.append(f"  name: {volume_name}_anatomical_origin")
         lines.append(f"  mass: 0.0")
