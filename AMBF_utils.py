@@ -504,8 +504,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         data_size = pixelDataArray3D.shape
         # sanity check, data_size should match the dimensions of the labelmap now, lets check
         if not np.array_equal(data_size, dimensions):
-            logging.error("Data size does not match dimensions")
-            return
+            logging.warning("Data size does not match dimensions. data_size: %s %s %s", data_size, ", dimensions:", dimensions)
 
         # the origin tells us what the "anatomical" position of the [0,0,0] voxel is in mm. 
         # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
