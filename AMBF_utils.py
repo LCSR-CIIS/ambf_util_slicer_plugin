@@ -246,14 +246,6 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         self.markupSelector.setToolTip("Pick the markup to export.")
         markupConversionFormLayout.addRow("Markup: ", self.markupSelector)
 
-        # create a transform node called "anatomical_T_AMBF"
-        self.anatomical_T_AMBF = slicer.vtkMRMLLinearTransformNode()
-        self.anatomical_T_AMBF.SetName("Anatomical_to_AMBF_Origin")
-        slicer.mrmlScene.AddNode(self.anatomical_T_AMBF)
-        # make a transform node called "AMBF_T_anatomical"
-        self.AMBF_T_anatomical = slicer.vtkMRMLLinearTransformNode()
-        self.AMBF_T_anatomical.SetName("AMBF_Origin_to_Anatomical")
-        slicer.mrmlScene.AddNode(self.AMBF_T_anatomical)
         # set this node to always contain the transform from the current volume origin to its center point
         self.referenceVolumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onReferenceVolumeChanged)
 
@@ -331,14 +323,6 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
         volRenLogic = slicer.modules.volumerendering.logic()
         self.volren_displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
 
-        # Here, I will use the notation A_T_B, A_R_B, A_p_B, etc. This is a shorthand for transform, rotation, and position that take
-        # points in frame B and express them in frame A. This is convenient because A_T_C = A_T_B * B_T_C in this notation.
-        VolumeOriginInAMBF_p_VolumeOriginInSlicer = self.logic.calculate_VolumeOriginInAMBF_p_VolumeOriginInSlicer(volumeNode)
-        spaceOriginInSlicer_T_AMBFOriginInSlicer = np.eye(4)
-        spaceOriginInSlicer_T_AMBFOriginInSlicer[0:3,3] = -VolumeOriginInAMBF_p_VolumeOriginInSlicer
-        slicer.util.updateTransformMatrixFromArray(self.anatomical_T_AMBF, spaceOriginInSlicer_T_AMBFOriginInSlicer)
-        slicer.util.updateTransformMatrixFromArray(self.AMBF_T_anatomical, np.linalg.inv(spaceOriginInSlicer_T_AMBFOriginInSlicer))
-        
         # We have decided that if you use the identity transform, space_origin / antatomical_origin will be placed at the AMBF origin, with LPS -> x,y,z 
         self.update_AMBF_axes(np.array((0.0, 0.0, 0.0))) # assumes the anatomical_origin is (0,0,0) in 3D slicer
         self.updateTransformRelations()
@@ -380,21 +364,6 @@ class AMBF_utilsWidget(ScriptedLoadableModuleWidget):
 
 
     def updateTransformRelations(self):        
-        # These intermediate transforms are necessary because we want AMBF_Pose to act
-        # as if it were occuring on the center of the volume in LPS coordinates. By default,
-        # it would be on the world origin in RAS coordinates.
-        # self.RASTOLPS.SetAndObserveTransformNodeID(self.AMBF_T_anatomical.GetID())
-        # self.ambfPose.SetAndObserveTransformNodeID(self.RASTOLPS.GetID())
-        # self.RASTOLPS2.SetAndObserveTransformNodeID(self.ambfPose.GetID())
-        # self.anatomical_T_AMBF.SetAndObserveTransformNodeID(self.RASTOLPS2.GetID())
-
-        # labelMapNode = self.segmentLabelMapSelector.currentNode()
-        # if labelMapNode is not None:
-        #     if self.enableLabelMapRenderingAtAmbfPose.checked:
-        #         labelMapNode.SetAndObserveTransformNodeID(self.anatomical_T_AMBF.GetID())
-        #     else:
-        #         labelMapNode.SetAndObserveTransformNodeID(None)
-
         # These intermediate transforms are necessary because we want AMBF_Pose to act
         # as if it were occuring on the anatomical_origin in LPS coordinates. By default, in RAS coordinates.
         self.ambfPose.SetAndObserveTransformNodeID(self.RASTOLPS.GetID())
@@ -462,23 +431,6 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         volumeCenter_p_spaceOrigin = np.array(IJKToRASMatrix.MultiplyPoint(np.append(center_ijk,1.0))[0:3])
         return volumeCenter_p_spaceOrigin
 
-    # def get_labelmap_data_as_numpy_ijk_ras(self, labelMap)
-    #     # we want the numpy matrix M[i,j,k] to be the label at voxel (i,j,k) in RAS coordinates
-    #     pixelData = labelMap.GetPointData().GetScalars()
-    #     # get the pixel data as a numpy array
-    #     pixelDataArray = vtk.util.numpy_support.vtk_to_numpy(pixelData)
-    #     # reshape the pixel data array to a 3D array, this order maintains correct shape, but results in (i,j,k) = (S,A,R) with origin at top left corner
-    #     # L/R is left, right, P/A is posterior, anterior, S/I is superior, inferior, positive is towards the name, i.e. LPS means +x, +y, +z are towards the left, posterior, superior
-    #     pixelDataArray3D = pixelDataArray.reshape((vox_dims_slicer[2], vox_dims_slicer[1], vox_dims_slicer[0]))
-    #     # flip the array to arrive at RAS coordinates
-    #     pixelDataArray3D = np.swap(pixelDataArray3D, 0, 2)
-
-    # def get_labelmap_data_as_numpy_ijk_lps(self, labelMap)
-    #     pass
-
-    # def reshape_numpy_ijk_lps_for_ambf_image_read()
-    #     pass
-
     def exportLabelMapToPNG(self, labelMapNode, yaml_save_location, image_prefix, grayscale, generateYaml, volume_name, scale, ambf_pose_node, generate_images):
         if labelMapNode is None:
             logging.error("Segmentation node is None")
@@ -528,25 +480,11 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         pixelDataArray3D = np.flip(pixelDataArray3D, 0) #(A,R,S) --> (P,R,S)
 
         vox_dims_ambf = np.array(pixelDataArray3D.shape)
-        # As a result of the above manipulation, we expect vox_dims_ambf = vox_dims_slicer with items 0 and 1 switched
-        # if not np.array_equal(vox_dims_ambf, np.array(vox_dims_slicer[1], vox_dims_slicer[0], vox_dims_slicer[2])):
-        #     logging.warning("Voxel dimensions do not match expected dimensions")
 
-        # the origin tells us what the "anatomical" position of the [0,0,0] voxel is in mm. 
-        # 3D slicer defines the origin as the bottom left corner of the volume, but AMBF defines it as the center)
-        
-        # THIS IS VOLUME ORIGIN
-        print("origin: " + str(volume_origin))
-        print("size_mm: " + str(size_mm))
-        origin_mm = (volume_origin - (size_mm/2))
-        origin_m = 0.001 * origin_mm
-
-        # THIS IS ANATOMICAL ORIGIN
         VolumeOriginInAMBF_p_VolumeOriginInSlicer = self.calculate_VolumeOriginInAMBF_p_VolumeOriginInSlicer(labelMapNode)
         VolumeOriginInAMBF_p_VolumeOriginInSlicer_m = VolumeOriginInAMBF_p_VolumeOriginInSlicer * 0.001
     
         if generate_images:
-
             # we will fill a directory with png slices
             slice_dir = os.path.join(yaml_save_location, volume_name)
             if not os.path.exists(slice_dir):
@@ -597,7 +535,6 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         img = self.convert_png_transparent(img, bg_color=(0,0,0))
         img.save(im_name)
 
-
     def normalize_data(self, data):
         max = data.max()
         min = data.min()
@@ -609,11 +546,9 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
             normalized_data = (data - min) / float(max - min)
         return normalized_data
 
-
     def scale_data(self, data, scale):
         scaled_data = data * scale
         return scaled_data
-
 
     def save_volume_as_images(self, data, im_prefix):
         for i in range(data.shape[2]):
@@ -624,12 +559,12 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
     def save_yaml_file(self, data_size, dimensions, volume_name, yaml_save_location, origin_m, scale, prefix, ambf_pose_node):
         # data_size: the size of the volume in voxels: (x,y,z) corresponds to anatomical dimensions (l,p,s)
         # dimensions: the size of the volume in meters per dimension (x,y,z)
-        # volume_name: the name of the volume
+        # volume_name: the name of the volume in AMBF
         # yaml_save_location: the location to save the yaml file
-        # origin_m: the anatomical origin of the volume in m
-        # scale: the scale of the volume (if applicable) for AMBF
-        # prefix: the prefix of the image files
-        # ambf_pose_node: a node that defines the initial pose of the volume in AMBF
+        # origin_m: the relative translation of the ambf volume origin (center of the volume) to the anatomical origin
+        # scale: the scale of the volume for AMBF (1.0 is metric)
+        # prefix: the prefix of the image files # TODO: cleaner way to zero pad the names
+        # ambf_pose_node: a node that defines the initial pose of the anatomical origin in AMBF
 
         data_size = np.array(data_size)
         # unpack ambf pose to numpy array
@@ -637,7 +572,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         # convert to m
         ambf_pose_m = ambf_pose
         ambf_pose_m[0:3,3] = ambf_pose_m[0:3,3] * 0.001
-        # due to the use of ras2lps in the module, we are already in the lps convention
+        # due to the use of ras2lps transforms in the module, we are already in the lps convention
         ambf_pose_m_lps = ambf_pose_m
 
         # Determine where the anatomical_origin will be in AMBF. This is just offset by the "ambf_pose_m_lps" value
@@ -645,8 +580,6 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
         anor_rot_r,anor_rot_p,anor_rot_y = Rotation.from_matrix(ambf_pose_m_lps[:3, :3]).as_euler("xyz")
 
         # The volume will be parented to the anatomical_origin and offset by the origin_m value        
-        # # Note: we are switching to defining the anatomical_origin relative to the ambf_origin and then parenting the
-        # ambf volume from so sign switches from before (TODO: someone could just change the sign earlier in the code)
         vol_pos_x, vol_pos_y, vol_pos_z = origin_m * scale
         vol_rot_r,vol_rot_p,vol_rot_y = Rotation.from_matrix(np.eye(3)).as_euler("xyz")
 
@@ -694,8 +627,11 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
             f.close()
         print("Saved YAML file to: " + yaml_name)
 
+    # TODO: leaving this here for now, but it is probably better to just save natively in Slicer and 
+    # then parse that file in AMBF, since they now have a json file output that includes lots of useful info
+    # such as lps/ras, etc.
     def exportMarkupToCSV(self, markupNode, volumeNode, output_dir, output_name, ambf_scale=1.0):
-
+        
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
@@ -741,5 +677,6 @@ class AMBF_utilsTest(ScriptedLoadableModuleTest):
 
     def dummy_test(self):
         self.delayDisplay("Starting the test:")
+        # TODO: add tests here
         self.delayDisplay("No tests for now!")
         self.delayDisplay('Test passed!')
