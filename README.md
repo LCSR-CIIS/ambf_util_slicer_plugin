@@ -13,7 +13,9 @@ https://user-images.githubusercontent.com/17507145/226940289-da422ef1-dd00-476c-
 
 
 ## Exporting LabelMaps (Slicer Segmentations) To AMBF Volumes:
-Volumes will be exported into a folder of png files sliced in the superior/inferior plane. Their origin (when loaded into AMBF) will be at the center of the volume, and the orientation will be LPS corresponding to x,y,z in its local coordinate system in AMBF. 
+Volumes will be exported into a folder of png files sliced in the superior/inferior plane, which are then loaded into AMBF as a ```VOLUME``` using the ```images``` method in the ADF file. Future versions of AMBF likely will directly load e.g. nrrd files, and this plugin may be updated to include that functionality as well.
+
+Along with the volume ```<volume_name>```, a static body ```<volume_name>_anatomical_origin``` will be configured to load into AMBF. This is the Cartesian origin of the image (i.e. the `x=y=z=0' point on the image), which is typically somewhat arbitrarily defined by the imager. The volume will parent to this body to appear in the correct location in AMBF. This allows you to do all registrations and express all features relative to the same image coordinate system. The orientation of the volume within AMBF is such that its x,y,z axes correspond to the LPS axes of the image. 
 
 To assist with understanding coordinate systems in 3DSlicer, see the following link: https://www.slicer.org/wiki/Coordinate_systems
 
@@ -31,12 +33,14 @@ You can see this file within the Slicer plugin using the "YAML Output" Tab. If y
 If you want to regenerate the yaml file (e.g. if you changed a setting like the volume name or scale), and do not want to regenerate all of the image slices again, you may disable this with the "Generate Image Slices" checkbox.
 
 ### Applying a non-identity offset to the volume
-When you select a LabelMap, a transform called "AMBF_Pose" will be generated in the "Transforms" module. This will correspond to the initial pose that your volume will have in AMBF (i.e. what goes in the ADF yaml file). This is how you can specify your volume to have a non-identity pose. Both the volume's position and the anatomical origin's position will be updated in the ADF file accordingly. Several other Transforms will appear, all having internal relations within 3DSlicer. This is done to allow the "AMBF_Pose" transform to act like an LPS transform at the volume's center (i.e. as if it is a transform applied to the volume in AMBF).
+When you select a LabelMap, a transform called "AMBF_Pose" will be generated in the "Transforms" module. This will correspond to the initial pose that your volume will have (or more accurately that the anatomical_origin will have) in AMBF (i.e. what goes in the ADF yaml file). This is how you can specify your volume to have a non-identity pose. The anatomical origin's position will be updated in the ADF file accordingly, the volume is parented to this origin so it will move accordingly. Several other Transforms will appear, all having internal relations within 3DSlicer. This is done to allow the "AMBF_Pose" transform to act like an LPS transform (perhaps a bit controversial, but this mean the matrix that appears within 3D slicer will match that which appears in the ADF file).
 
 ### A Note on the [volume_name]_anatomical_origin body
-By default, this body is static in AMBF, and will not move if you were to move the volume and vice versa [NOTE: TODO: There are upcoming changes to AMBF which should allow for a parent-child relationship between these two that will uncomplicate this]. If you plan on moving the volume at any time in your application, you need to be sure to also move this body accordingly, otherwise you will no longer be able to use the anatomical origin as a reference point.
+By default, this body is static in AMBF, but you can move it via the Python and ROS clients, or with your own plugin as you would any other body. It is imporant to note that you should **never move the volume itself, ALWAYS move the anatomical_origin** otherwise the relationship will not be maintained.
 
 ## Exporting Markups
+NOTE: This is left in for convenience, but since there is now direct parenting of the volume to the anatomical origin, you likely will have a good experience just use the builtin saving of Markups within 3D Slicer and parse them yourself.
+
 Markups (for now markup point lists and markup curves are supported) will be written to a csv file, accounting for any scaling you choose to set.
 
 Markups in 3D Slicer are given in "anatomical" / "world" coordinates (i.e. relative to some world origin defined by the imager). This tool will convert them into SI units, then scale them per the AMBF scale that is set, and finally convert them into the LPS coordinate convention that is used in AMBF. These values will again be in "anatomical" coordinates, i.e. relative to the "[volume_name]_anatomical_origin" body in the ADF file.
