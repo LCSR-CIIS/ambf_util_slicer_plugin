@@ -483,6 +483,11 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         VolumeOriginInAMBF_p_VolumeOriginInSlicer = self.calculate_VolumeOriginInAMBF_p_VolumeOriginInSlicer(labelMapNode)
         VolumeOriginInAMBF_p_VolumeOriginInSlicer_m = VolumeOriginInAMBF_p_VolumeOriginInSlicer * 0.001
+        
+        # But that result was in RAS coordinates, we want to convert to LPS
+        VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps = VolumeOriginInAMBF_p_VolumeOriginInSlicer_m
+        VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps[0] = -VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps[0]
+        VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps[1] = -VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps[1]
     
         if generate_images:
             # we will fill a directory with png slices
@@ -517,7 +522,7 @@ class AMBF_utilsLogic(ScriptedLoadableModuleLogic):
 
         if generateYaml:
             print("vox_dims_ambf: " + str(vox_dims_ambf))
-            self.save_yaml_file(vox_dims_ambf, size_m, volume_name, yaml_save_location, VolumeOriginInAMBF_p_VolumeOriginInSlicer_m, scale, image_prefix, ambf_pose_node)
+            self.save_yaml_file(vox_dims_ambf, size_m, volume_name, yaml_save_location, VolumeOriginInAMBF_p_VolumeOriginInSlicer_m_lps, scale, image_prefix, ambf_pose_node)
 
 
     def convert_png_transparent(self, image, bg_color=(255,255,255)):
