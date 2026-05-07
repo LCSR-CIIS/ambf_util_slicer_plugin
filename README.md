@@ -1,3 +1,6 @@
+# Note
+**If you directly want to convert NRRD or SEG NRRD files to ADF (for use in AMBF), you can directly use the standalone [nrrd_to_adf](https://github.com/AMBF-ORG/nrrd_to_adf) converter**
+
 # AMBF_Utils Module for 3D Slicer
 This module is a collection of utilities for exporting volumes and markers from 3D Slicer to a format that can be read by the AMBF Simulator and various volumetric plugins for the AMBF Simulator.
 
